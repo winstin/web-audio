@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width">
+
+    <title>createMediaStreamSource example</title>
+
+    <link rel="stylesheet" href="">
+    <script
+  src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+  integrity="sha256-3edrmyuQ0w65f8gfBsqowzjJe2iM6n0nKciPUp8y+7E="
+  crossorigin="anonymous"></script>
+  </head>
+
+  <body>
+        <canvas id="canvas" width="200" height="150" ></canvas>
+
+        <p id="controls">
+          <input type="button" id="start_button" value="Start">
+          &nbsp; &nbsp;
+          <input type="button" id="stop_button" value="Stop">
+        </p>
+        
+        <!-- ----------------------------------------------------- -->
+        
+        <style>
+            #canvas {
+                margin-left: auto;
+                margin-right: auto;
+                display: block;
+                background-color: black;
+            }
+            #controls {
+                text-align: center;
+            }
+            #start_button, #stop_button {
+                font-size: 16pt;
+            }
+        </style>
+        
+        <!-- ----------------------------------------------------- -->
+        
+        
+        <script type="text/javascript">
+            // Hacks to deal with different function names in different browsers
+            window.requestAnimFrame = (function(){
+              return  window.requestAnimationFrame       ||
+                      window.webkitRequestAnimationFrame ||
+                      window.mozRequestAnimationFrame    ||
+                      function(callback, element){
+                        window.setTimeout(callback, 1000 / 60);
+                      };
+            })();
+            window.AudioContext = (function(){
+                return  window.webkitAudioContext || window.AudioContext || window.mozAudioContext;
+            })();
+            // Global Variables for Audio
+            var audioContext;
+            var audioBuffer;
+            var sourceNode;
+            var analyserNode;
+            var javascriptNode;
+            var audioData = null;
+            var audioPlaying = false;
+            var sampleSize = 2048;  // number of samples to collect before analyzing data
+            var amplitudeArray;     // array to hold time domain data
+            // This must be hosted on the same server as this page - otherwise you get a Cross Site Scripting error
+            var audioUrl = "/audio-analyser/viper.ogg";
+            // Global Variables for the Graphics
+            var canvasWidth  = 200;
+            var canvasHeight = 150;
+            var ctx;
+            $(document).ready(function() {
+                ctx = document.getElementById('canvas').getContext("2d");
+                // the AudioContext is the primary 'container' for all your audio node objects
+                try {
+                    audioContext = new AudioContext();
+                } catch(e) {
+                    alert('Web Audio API is not supported in this browser');
+                }
+                // When the Start button is clicked, finish setting up the audio nodes, play the sound,
+                // gather samples for the analysis, update the canvas
+                $("#start_button").on('click', function(e) {
+                    e.preventDefault();
+
+                    // Set up the audio Analyser, the Source Buffer and javascriptNode
+                    // 初始化数据
+                    setupAudioNodes();
+                    // setup the event handler that is triggered every time enough samples have been collected
+                    // trigger the audio analysis and draw the results
+                    javascriptNode.onaudioprocess = function () {
+                        // get the Time Domain data for this sample
+                        // AnalyserNode接口的getByteTimeDomainData（）方法将当前波形或时域数据复制到Uint8Array（无符号字节数组）中。
+                        analyserNode.getByteTimeDomainData(amplitudeArray);
+
+                        // draw the display if the audio is playing
+                        if (audioPlaying == true) {
+                            requestAnimFrame(drawTimeDomain);
+                        }
+                    }
+                    // Load the Audio the first time through, otherwise play it from the buffer
+                    if(audioData == null) {
+                        loadSound(audioUrl);
+                    } else {
+                        playSound(audioData);
+                    }
+                });
+                // Stop the audio playing
+                $("#stop_button").on('click', function(e) {
+                    e.preventDefault();
+                    sourceNode.stop(0);
+                    audioPlaying = false;
+                });
+            });
+            function setupAudioNodes() {
+
+                //用于新建一个空白的 AudioBuffer 对象，以便用于填充数据，通过 AudioBufferSourceNode 播放。
+                sourceNode     = audioContext.createBufferSource();
+
+                //创建一个AnalyserNode，可以用来获取音频时间和频率数据，以及实现数据可视化。
+                analyserNode   = audioContext.createAnalyser();
+
+                //创建一个ScriptProcessorNode 用于通过JavaScript直接处理音频.
+                //缓冲区大小，以样本帧为单位。具体来讲，缓冲区大小必须去是下面这些值当中的某一个: 256, 512, 1024, 2048, 4096, 8192, 16384. 如果不传，或者参数为0，则取当前环境最合适的缓冲区大小, 取值为2的幂次方的一个常数，在该node的整个生命周期中都不变.
+                //该取值控制着audioprocess事件被分派的频率，以及每一次调用多少样本帧被处理. 较低bufferSzie将导致一定的延迟。较高的bufferSzie就要注意避免音频的崩溃和故障。推荐作者不要给定具体的缓冲区大小，让系统自己选一个好的值来平衡延迟和音频质量。
+                javascriptNode = audioContext.createScriptProcessor(sampleSize, 1, 1);
+
+                // Create the array for the data values
+                //frequencyBinCount 的值固定为 AnalyserNode 接口中fftSize值的一半. 该属性通常用于可视化的数据值的数量.
+                
+                amplitudeArray = new Uint8Array(analyserNode.frequencyBinCount);
+
+                // Now connect the nodes together
+                // AudioContext的destination属性返回一个AudioDestinationNode表示context中所有音频（节点）的最终目标节点，一般是音频渲染设备，比如扬声器
+                sourceNode.connect(audioContext.destination);
+                sourceNode.connect(analyserNode);
+                analyserNode.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+            }
+            // Load the audio from the URL via Ajax and store it in global variable audioData
+            // Note that the audio load is asynchronous
+            function loadSound(url) {
+                var request = new XMLHttpRequest();
+                request.open('GET', "http://oj4t8z2d5.bkt.clouddn.com/%E9%A3%8E%E7%BB%A7%E7%BB%AD%E5%90%B9.mp3", true);
+                request.responseType = 'arraybuffer';
+                // When loaded, decode the data and play the sound
+                request.onload = function () {
+
+                    //AudioContext接口的decodeAudioData()方法可用于异步解码音频文件中的 ArrayBuffer. ArrayBuffer数据可以通过XMLHttpRequest和FileReader来获取. AudioBuffer是通过AudioContext采样率进行解码的,然后通过回调返回结果.
+                    audioContext.decodeAudioData(request.response, function (buffer) {
+                        audioData = buffer;
+                        playSound(audioData);
+                    }, onError);
+
+                }
+                request.send();
+            }
+            // Play the audio and loop until stopped
+            function playSound(buffer) {
+                sourceNode.buffer = buffer;
+                sourceNode.start(0);    // Play the sound now
+                sourceNode.loop = true;
+                audioPlaying = true;
+            }
+            function onError(e) {
+                console.log(e);
+            }
+            function drawTimeDomain() {
+                clearCanvas();
+                for (var i = 0; i < amplitudeArray.length; i++) {
+                    var value = amplitudeArray[i] / 256;
+                    var y = canvasHeight - (canvasHeight * value) - 1;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(i, y, 1, 1);
+                }
+            }
+            function clearCanvas() {
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            }
+        </script>
+    </body>
+</html>
