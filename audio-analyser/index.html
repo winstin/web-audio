@@ -17,10 +17,23 @@
   <body>
         <canvas id="canvas" width="200" height="150" ></canvas>
 
+
+        <p id="controls">
+          <input type="button" id="currentTime" value="00:00">
+          &nbsp; &nbsp;
+          <input type="button" id="duration" value="00:00">
+        </p>
+
         <p id="controls">
           <input type="button" id="start_button" value="Start">
           &nbsp; &nbsp;
           <input type="button" id="stop_button" value="Stop">
+        </p>
+
+        <p id="controls">
+          <input type="button" id="add_button" value="音量+">
+          &nbsp; &nbsp;
+          <input type="button" id="plus_button" value="音量-">
         </p>
         
         <!-- ----------------------------------------------------- -->
@@ -64,6 +77,7 @@
             var javascriptNode;
             var audioData = null;
             var audioPlaying = false;
+            var inittime = 0;
             var sampleSize = 2048;  // number of samples to collect before analyzing data
             var amplitudeArray;     // array to hold time domain data
             // This must be hosted on the same server as this page - otherwise you get a Cross Site Scripting error
@@ -71,7 +85,11 @@
             // Global Variables for the Graphics
             var canvasWidth  = 200;
             var canvasHeight = 150;
+
+            var gainNodeValue = 2;
             var ctx;
+            var gainNode;
+            var currGain;
             $(document).ready(function() {
                 ctx = document.getElementById('canvas').getContext("2d");
                 // the AudioContext is the primary 'container' for all your audio node objects
@@ -95,8 +113,13 @@
                         // AnalyserNode接口的getByteTimeDomainData（）方法将当前波形或时域数据复制到Uint8Array（无符号字节数组）中。
                         analyserNode.getByteTimeDomainData(amplitudeArray);
 
+                        // console.log(analyserNode)
+                        
+                        console.log(formatSeconds(analyserNode.context.currentTime - inittime))
+                        
                         // draw the display if the audio is playing
                         if (audioPlaying == true) {
+                            $("#currentTime").val(formatSeconds(analyserNode.context.currentTime - inittime))
                             requestAnimFrame(drawTimeDomain);
                         }
                     }
@@ -104,9 +127,37 @@
                     if(audioData == null) {
                         loadSound(audioUrl);
                     } else {
+                        console.log(audioData)
                         playSound(audioData);
                     }
                 });
+
+
+                $("#add_button").on('click', function(e) {
+                    gainNodeValue = gainNodeValue+1;
+                    //音频音量调节（影响波形图变化）
+                    
+                    gainNode.gain.value = gainNodeValue;
+                    currGain = gainNode.gain.value;
+                    // connect the AudioBufferSourceNode to the gainNode
+                    // and the gainNode to the destination
+                    sourceNode.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                })
+
+                $("#plus_button").on('click', function(e) {
+                    gainNodeValue = gainNodeValue-1; 
+                    if(gainNodeValue<=0){
+                        gainNodeValue = 0
+                    }                   
+                    gainNode.gain.value = gainNodeValue;
+                    currGain = gainNode.gain.value;
+                    // connect the AudioBufferSourceNode to the gainNode
+                    // and the gainNode to the destination
+                    sourceNode.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                })
+
                 // Stop the audio playing
                 $("#stop_button").on('click', function(e) {
                     e.preventDefault();
@@ -132,6 +183,16 @@
                 
                 amplitudeArray = new Uint8Array(analyserNode.frequencyBinCount);
 
+                //音频音量调节（影响波形图变化）
+                gainNode = audioContext.createGain();
+
+                gainNode.gain.value = gainNodeValue;
+                currGain = gainNode.gain.value;
+                // connect the AudioBufferSourceNode to the gainNode
+                // and the gainNode to the destination
+                sourceNode.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
                 // Now connect the nodes together
                 // AudioContext的destination属性返回一个AudioDestinationNode表示context中所有音频（节点）的最终目标节点，一般是音频渲染设备，比如扬声器
                 sourceNode.connect(audioContext.destination);
@@ -150,6 +211,8 @@
 
                     //AudioContext接口的decodeAudioData()方法可用于异步解码音频文件中的 ArrayBuffer. ArrayBuffer数据可以通过XMLHttpRequest和FileReader来获取. AudioBuffer是通过AudioContext采样率进行解码的,然后通过回调返回结果.
                     audioContext.decodeAudioData(request.response, function (buffer) {
+                         $("#duration").val(formatSeconds(buffer.duration))
+                        console.log(buffer.duration)
                         audioData = buffer;
                         playSound(audioData);
                     }, onError);
@@ -163,6 +226,8 @@
                 sourceNode.start(0);    // Play the sound now
                 sourceNode.loop = true;
                 audioPlaying = true;
+
+                inittime = audioContext.currentTime; //我保存初始时间
             }
             function onError(e) {
                 console.log(e);
@@ -179,6 +244,42 @@
             function clearCanvas() {
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
             }
+
+
+
+        function formatSeconds(value) {
+            let theTime = parseInt(value);
+            let theTime1 = 0;
+            let theTime2 = 0;
+            if (theTime > 60) {
+                theTime1 = parseInt(theTime / 60);
+                theTime = parseInt(theTime % 60);
+                if (theTime1 > 60) {
+                    theTime2 = parseInt(theTime1 / 60);
+                    theTime1 = parseInt(theTime1 % 60);
+                }
+            }
+            let result;
+            if (parseInt(theTime) > 9) {
+                result = "" + parseInt(theTime) + "";
+            } else {
+                result = "0" + parseInt(theTime) + "";
+            }
+            if (theTime1 > 0) {
+                if(parseInt(theTime1) > 9) {
+                    result = "" + parseInt(theTime1) + ":" + result;
+                }else {
+                    result = "0" + parseInt(theTime1) + ":" + result;
+                }
+            } else {
+                result = "00:" + result;
+            }
+            if (theTime2 > 0) {
+                result = "" + parseInt(theTime2) + ":" + result;
+            }
+            return result;
+        }
+
         </script>
     </body>
 </html>
